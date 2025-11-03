@@ -17,18 +17,11 @@ export function BalancePanel() {
       } = await supabase.auth.getUser()
 
       if (user) {
-        // Load coins balance
-        const { data: coins } = await supabase
-          .from("coins")
-          .select("amount")
-          .eq("user_id", user.id)
-          .eq("status", "available")
-        if (coins) {
-          const total = coins.reduce((sum, coin) => sum + Number(coin.amount), 0)
-          setBalance(total)
+        const { data: balanceData } = await supabase.rpc("get_user_balance", { p_user_id: user.id })
+        if (balanceData !== null) {
+          setBalance(Number(balanceData))
         }
 
-        // Load user profile stats
         const { data: profile } = await supabase
           .from("profiles")
           .select("rating, total_trades")
@@ -51,7 +44,7 @@ export function BalancePanel() {
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div>
             <div className="text-xs text-gray-400 mb-1">Your Balance</div>
-            <div className="text-2xl font-bold text-white">{balance ? balance.toFixed(2) : "0.00"} GX</div>
+            <div className="text-2xl font-bold text-white">{balance ? balance.toFixed(2) : "0.00"} AFX</div>
           </div>
           <div className="text-right">
             <div className="text-xs text-gray-400 mb-1">Daily Growth</div>
@@ -79,20 +72,20 @@ export function BalancePanel() {
       <div className="glass-card p-6 rounded-2xl border border-white/5">
         <h4 className="font-bold text-white mb-2">P2P Market</h4>
         <p className="text-sm text-gray-400 mb-4">
-          Buy or sell GX with M-Pesa or bank transfer. Escrow-secured trades.
+          Buy or sell AFX with M-Pesa or bank transfer. Escrow-secured trades.
         </p>
         <div className="flex gap-3">
           <Link
             href="/market?tab=buy"
-            className="flex-1 px-4 py-2 rounded-lg btn-ghost-gx font-semibold border hover:bg-green-500/10 transition text-sm text-center"
+            className="flex-1 px-4 py-2 rounded-lg btn-ghost-afx font-semibold border hover:bg-green-500/10 transition text-sm text-center"
           >
-            Buy GX
+            Buy AFX
           </Link>
           <Link
             href="/market?tab=sell"
-            className="flex-1 px-4 py-2 rounded-lg btn-ghost-gx font-semibold border hover:bg-green-500/10 transition text-sm text-center"
+            className="flex-1 px-4 py-2 rounded-lg btn-ghost-afx font-semibold border hover:bg-green-500/10 transition text-sm text-center"
           >
-            Sell GX
+            Sell AFX
           </Link>
         </div>
       </div>

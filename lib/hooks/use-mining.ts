@@ -9,6 +9,7 @@ export function useMining() {
   const [nextMine, setNextMine] = useState<string | null>(null)
   const [isClaiming, setIsClaiming] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [miningConfig, setMiningConfig] = useState<any>(null)
 
   const fetchMiningStatus = useCallback(async () => {
     const result = await getMiningStatus()
@@ -16,6 +17,7 @@ export function useMining() {
       setCanMine(result.canMine || false)
       setNextMine(result.nextMine || null)
       setTimeRemaining(result.timeRemaining || 0)
+      setMiningConfig(result.miningConfig) // Store config
     }
     setIsLoading(false)
   }, [])
@@ -53,9 +55,9 @@ export function useMining() {
     if (result.success) {
       setCanMine(false)
       setNextMine(result.nextMine || null)
-      // Calculate time remaining (3 hours)
-      setTimeRemaining(3 * 60 * 60 * 1000)
-      // Refresh status after a short delay
+      const intervalMs = (result.miningConfig?.interval_hours || 5) * 60 * 60 * 1000
+      setTimeRemaining(intervalMs)
+      setMiningConfig(result.miningConfig) // Update config
       setTimeout(fetchMiningStatus, 1000)
     } else {
       console.error("[v0] Mining claim failed:", result.error)
@@ -73,5 +75,6 @@ export function useMining() {
     isLoading,
     handleClaim,
     refreshStatus: fetchMiningStatus,
+    miningConfig, // Expose config to components
   }
 }

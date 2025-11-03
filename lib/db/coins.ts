@@ -41,3 +41,36 @@ export async function unclaimCoins(coinId: string) {
   if (error) throw error
   return data
 }
+
+export async function getDashboardBalance(userId: string) {
+  const supabase = await createClient()
+
+  // Sum all available coins (mining rewards and other claims)
+  const { data, error } = await supabase.from("coins").select("amount").eq("user_id", userId).eq("status", "available")
+
+  if (error) {
+    console.error("[v0] Error fetching dashboard balance:", error)
+    throw error
+  }
+
+  const balance = data?.reduce((sum, coin) => sum + Number(coin.amount), 0) || 0
+  return balance
+}
+
+export async function getMiningRewards(userId: string) {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from("coins")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("claim_type", "mining")
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("[v0] Error fetching mining rewards:", error)
+    throw error
+  }
+
+  return data || []
+}

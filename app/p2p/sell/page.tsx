@@ -105,21 +105,21 @@ export default function SellGXPage() {
       const availableAmount = ad.remaining_amount || ad.gx_amount
 
       if (tradeAmount < 2) {
-        alert("Minimum trade amount is 2 GX")
+        alert("Minimum trade amount is 2 AFX")
         setInitiatingTrade(null)
         return
       }
 
       if (tradeAmount > availableAmount) {
-        alert(`Maximum available amount is ${availableAmount} GX`)
+        alert(`Maximum available amount is ${availableAmount} AFX`)
         setInitiatingTrade(null)
         return
       }
 
       const { data: tradeId, error } = await supabase.rpc("initiate_p2p_trade_v2", {
         p_ad_id: ad.id,
-        p_buyer_id: user.id,
-        p_gx_amount: tradeAmount,
+        p_initiator_id: user.id,
+        p_afx_amount: tradeAmount,
       })
 
       if (error) {
@@ -138,13 +138,38 @@ export default function SellGXPage() {
     }
   }
 
-  function getPaymentMethods(ad: Ad) {
-    const methods = []
+  function getPaymentMethods(ad: Ad): string {
+    const methods: string[] = []
+
     if (ad.mpesa_number) methods.push("M-Pesa")
-    if (ad.paybill_number) methods.push("Paybill")
+    if (ad.paybill_number) methods.push("M-Pesa Paybill")
     if (ad.airtel_money) methods.push("Airtel Money")
-    if (ad.account_number) methods.push("Bank Account")
-    return methods.join(", ") || "Not specified"
+
+    // Parse account_number for concatenated payment methods
+    if (ad.account_number) {
+      const accountStr = ad.account_number.toLowerCase()
+
+      if (accountStr.includes("m-pesa") && !ad.mpesa_number) {
+        if (accountStr.includes("paybill")) {
+          methods.push("M-Pesa Paybill")
+        } else {
+          methods.push("M-Pesa")
+        }
+      }
+      if (accountStr.includes("bank")) {
+        methods.push("Bank Transfer")
+      }
+      if (accountStr.includes("airtel") && !ad.airtel_money) {
+        methods.push("Airtel Money")
+      }
+
+      // If no keywords found, treat as bank account
+      if (methods.length === 0 && ad.account_number.length > 0) {
+        methods.push("Bank Transfer")
+      }
+    }
+
+    return methods.length > 0 ? methods.join(", ") : "Not specified"
   }
 
   return (

@@ -7,22 +7,30 @@ import Footer from "@/components/footer"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { TransactionHistory } from "@/components/transaction-history"
 import { UserStatsCard } from "@/components/user-stats-card"
-import { PriceHistoryChart } from "@/components/price-history-chart"
 import { MiningWidget } from "@/components/mining-widget"
+import { MiningRewardsTable } from "@/components/mining-rewards-table"
+import { HalvingCountdownWidget } from "@/components/halving-countdown-widget"
 import { ArrowLeftRight } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 export default function Dashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(true)
+  const [username, setUsername] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchReferralsCount = async () => {
+    const fetchUserData = async () => {
       const supabase = createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
       if (user) {
+        const { data: profile } = await supabase.from("profiles").select("username").eq("id", user.id).single()
+
+        if (profile?.username) {
+          setUsername(profile.username)
+        }
+
         const { data, error } = await supabase
           .from("referrals")
           .select("id", { count: "exact" })
@@ -37,7 +45,7 @@ export default function Dashboard() {
       }
     }
 
-    fetchReferralsCount()
+    fetchUserData()
   }, [])
 
   if (!isLoggedIn) {
@@ -59,11 +67,10 @@ export default function Dashboard() {
       <Header isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} />
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-6 py-12">
-          {/* Welcome Section */}
           <div className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold mb-2">Welcome back!</h1>
-              <p className="text-gray-400">Your dashboard is ready. Trade GX on the P2P marketplace.</p>
+              <h1 className="text-4xl font-bold mb-2">Welcome back{username ? ` ${username}` : ""}!</h1>
+              <p className="text-gray-400">Your dashboard is ready. Trade AFX on the P2P marketplace.</p>
             </div>
             <Link
               href="/p2p"
@@ -74,22 +81,22 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* Stats Grid */}
           <DashboardStats />
 
-          {/* Main Content Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-            {/* Left Column - Wallet & Stats */}
             <div className="lg:col-span-2 space-y-8">
               <MiningWidget />
               <UserStatsCard />
-              <PriceHistoryChart />
             </div>
 
-            {/* Right Column - History */}
-            <div>
+            <div className="space-y-8">
+              <HalvingCountdownWidget />
               <TransactionHistory />
             </div>
+          </div>
+
+          <div className="mt-8">
+            <MiningRewardsTable />
           </div>
         </div>
       </main>

@@ -15,7 +15,7 @@ interface Trade {
   ad_id: string
   buyer_id: string
   seller_id: string
-  gx_amount: number
+  afx_amount: number // Renamed from gx_amount to afx_amount
   escrow_amount: number
   status: string
   created_at: string
@@ -152,7 +152,7 @@ export default function MyTrades() {
         <div className="flex items-start justify-between mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold text-lg">{trade.gx_amount} GX</span>
+              <span className="font-semibold text-lg">{trade.afx_amount} AFX</span>
               {getStatusBadge(trade.status)}
             </div>
             <p className="text-sm text-gray-400">

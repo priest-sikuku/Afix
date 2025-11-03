@@ -97,12 +97,12 @@ export default function ReferralsPage() {
   }
 
   const shareOnWhatsApp = () => {
-    const message = `Join GrowX and earn passive income! Use my referral code: ${profile?.referral_code} or click: ${referralLink}`
+    const message = `Join AfriX and earn passive income! Use my referral code: ${profile?.referral_code} or click: ${referralLink}`
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank")
   }
 
   const shareOnTwitter = () => {
-    const text = `Join GrowX - The Coin That Never Sleeps! Use my referral code: ${profile?.referral_code} and earn 2% trading commission + 1% claim commission! ${referralLink}`
+    const text = `Join AfriX - The Coin That Never Sleeps! Use my referral code: ${profile?.referral_code} and earn 2% trading commission + 1% mining commission! ${referralLink}`
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank")
   }
 
@@ -141,15 +141,15 @@ export default function ReferralsPage() {
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/5">
               <p className="text-gray-400 text-sm mb-2">Trading Commission</p>
-              <p className="text-3xl font-bold text-green-400">{totalTradingCommission.toFixed(2)} GX</p>
+              <p className="text-3xl font-bold text-green-400">{totalTradingCommission.toFixed(2)} AFX</p>
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/5">
-              <p className="text-gray-400 text-sm mb-2">Claim Commission</p>
-              <p className="text-3xl font-bold text-green-400">{totalClaimCommission.toFixed(2)} GX</p>
+              <p className="text-gray-400 text-sm mb-2">Mining Commission</p>
+              <p className="text-3xl font-bold text-green-400">{totalClaimCommission.toFixed(2)} AFX</p>
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/5">
               <p className="text-gray-400 text-sm mb-2">Total Commission</p>
-              <p className="text-3xl font-bold text-yellow-400">{totalCommission.toFixed(2)} GX</p>
+              <p className="text-3xl font-bold text-yellow-400">{totalCommission.toFixed(2)} AFX</p>
             </div>
           </div>
 
@@ -197,7 +197,7 @@ export default function ReferralsPage() {
               </p>
               <p className="text-blue-300 text-sm mt-2">
                 Earn <strong>2%</strong> commission on all trading volume from your referrals and <strong>1%</strong> on
-                all claimed GX coins.
+                all mined AFX coins.
               </p>
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function ReferralsPage() {
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Username</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Email</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-semibold">Trading Commission</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">Claim Commission</th>
+                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">Mining Commission</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-semibold">Total</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Joined</th>
                     </tr>
@@ -241,12 +241,12 @@ export default function ReferralsPage() {
                           <td className="py-3 px-4 text-white">{referredUser?.username || "Unknown"}</td>
                           <td className="py-3 px-4 text-gray-400 text-sm">{referredUser?.email || "-"}</td>
                           <td className="py-3 px-4 text-right text-green-400">
-                            {(referral.total_trading_commission || 0).toFixed(2)} GX
+                            {(referral.total_trading_commission || 0).toFixed(2)} AFX
                           </td>
                           <td className="py-3 px-4 text-right text-green-400">
-                            {(referral.total_claim_commission || 0).toFixed(2)} GX
+                            {(referral.total_claim_commission || 0).toFixed(2)} AFX
                           </td>
-                          <td className="py-3 px-4 text-right text-yellow-400 font-semibold">{total.toFixed(2)} GX</td>
+                          <td className="py-3 px-4 text-right text-yellow-400 font-semibold">{total.toFixed(2)} AFX</td>
                           <td className="py-3 px-4 text-gray-400 text-sm">
                             {new Date(referral.created_at).toLocaleDateString()}
                           </td>

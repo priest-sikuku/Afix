@@ -3,8 +3,24 @@
 import { createClient } from "@/lib/supabase/server"
 import { createTransaction } from "@/lib/db/transactions"
 
-const MINING_AMOUNT = 0.73
-const MINING_INTERVAL_HOURS = 3
+export async function getMiningConfig() {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase.rpc("get_current_mining_reward").single()
+
+  if (error) {
+    console.error("[v0] Error fetching mining config:", error)
+    // Fallback to default values
+    return {
+      reward_amount: 0.5,
+      interval_hours: 5,
+      halving_date: null,
+      is_halved: false,
+    }
+  }
+
+  return data
+}
 
 export async function claimMining() {
   const supabase = await createClient()
@@ -20,6 +36,10 @@ export async function claimMining() {
   }
 
   try {
+    const miningConfig = await getMiningConfig()
+    const MINING_AMOUNT = miningConfig.reward_amount
+    const MINING_INTERVAL_HOURS = miningConfig.interval_hours
+
     // Get user's mining status from profiles
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -44,7 +64,6 @@ export async function claimMining() {
       }
     }
 
-    // Calculate next mining time (3 hours from now)
     const newNextMine = new Date(now.getTime() + MINING_INTERVAL_HOURS * 60 * 60 * 1000)
 
     // Update profile with new mining times
@@ -63,18 +82,38 @@ export async function claimMining() {
     }
 
     // Add coins to user's balance
-    const { error: coinsError } = await supabase.from("coins").insert({
-      user_id: user.id,
-      amount: MINING_AMOUNT,
-      claim_type: "mining",
-      status: "available",
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    })
+    const { data: coinData, error: coinsError } = await supabase
+      .from("coins")
+      .insert({
+        user_id: user.id,
+        amount: MINING_AMOUNT,
+        claim_type: "mining",
+        status: "available",
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .select()
+      .single()
 
     if (coinsError) {
       console.error("[v0] Error adding coins:", coinsError)
-      return { success: false, error: "Failed to add coins" }
+      return { success: false, error: "Failed to add coins to balance" }
+    }
+
+    console.log("[v0] Coins added successfully:", coinData)
+
+    try {
+      const { error: commissionError } = await supabase.rpc("add_claim_commission", {
+        p_referred_id: user.id,
+        p_claim_amount: MINING_AMOUNT,
+        p_coin_id: coinData.id,
+      })
+
+      if (commissionError) {
+        console.error("[v0] Error adding claim commission:", commissionError)
+      }
+    } catch (commissionError) {
+      console.error("[v0] Exception adding claim commission:", commissionError)
     }
 
     // Log transaction
@@ -84,12 +123,15 @@ export async function claimMining() {
       userId: user.id,
       amount: MINING_AMOUNT,
       nextMine: newNextMine.toISOString(),
+      coinId: coinData.id,
     })
 
     return {
       success: true,
       amount: MINING_AMOUNT,
       nextMine: newNextMine.toISOString(),
+      balance: coinData.amount,
+      miningConfig, // Return config for UI updates
     }
   } catch (error) {
     console.error("[v0] Exception in claimMining:", error)
@@ -110,6 +152,8 @@ export async function getMiningStatus() {
   }
 
   try {
+    const miningConfig = await getMiningConfig()
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("last_mine, next_mine")
@@ -131,6 +175,7 @@ export async function getMiningStatus() {
       lastMine: profile.last_mine,
       nextMine: profile.next_mine,
       timeRemaining: canMine ? 0 : nextMine.getTime() - now.getTime(),
+      miningConfig, // Include config in response
     }
   } catch (error) {
     console.error("[v0] Exception in getMiningStatus:", error)

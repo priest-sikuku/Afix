@@ -148,7 +148,7 @@ export function UserStatsCard() {
             </div>
             <div>
               <p className="text-sm text-gray-400">Commission Earned</p>
-              <p className="text-xl font-bold">{(stats?.commission_earned ?? 0).toFixed(2)} GX</p>
+              <p className="text-xl font-bold">{(stats?.commission_earned ?? 0).toFixed(2)} AFX</p>
             </div>
           </div>
         </div>
@@ -189,7 +189,7 @@ export function UserStatsCard() {
               <Package className="w-5 h-5 text-orange-400" />
             </div>
             <div>
-              <p className="text-sm text-gray-400">Remaining GX Supply</p>
+              <p className="text-sm text-gray-400">Remaining AFX Supply</p>
               <p className="text-xl font-bold">
                 {(supply?.remaining_supply ?? 0).toLocaleString()} / {(supply?.total_supply ?? 0).toLocaleString()}
               </p>

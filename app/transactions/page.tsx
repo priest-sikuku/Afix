@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client"
 
 interface Transaction {
   id: number
-  type: "trade" | "buy" | "sell" | "claim"
+  type: "trade" | "buy" | "sell" | "claim" | "referral_commission"
   amount: number
   time: string
   status: "completed" | "pending"
@@ -19,7 +19,9 @@ interface Transaction {
 export default function TransactionsPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(true)
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [filterType, setFilterType] = useState<"all" | "trade" | "buy" | "sell" | "claim">("all")
+  const [filterType, setFilterType] = useState<"all" | "trade" | "buy" | "sell" | "claim" | "referral_commission">(
+    "all",
+  )
 
   useEffect(() => {
     const loadTransactions = async () => {
@@ -40,7 +42,7 @@ export default function TransactionsPage() {
         if (transactionsData && transactionsData.length > 0) {
           const formattedTransactions = transactionsData.map((tx, index) => ({
             id: index + 1,
-            type: tx.type as "trade" | "buy" | "sell" | "claim",
+            type: tx.type as "trade" | "buy" | "sell" | "claim" | "referral_commission",
             amount: Number(tx.amount),
             time: new Date(tx.created_at).toLocaleString(),
             status: tx.status as "completed" | "pending",
@@ -73,9 +75,11 @@ export default function TransactionsPage() {
       case "claim":
         return "Coins Claimed"
       case "buy":
-        return "Bought GX"
+        return "Bought AFX"
       case "sell":
-        return "Sold GX"
+        return "Sold AFX"
+      case "referral_commission":
+        return "Referral Commission"
       default:
         return "Transaction"
     }
@@ -89,6 +93,8 @@ export default function TransactionsPage() {
         return "bg-blue-500/10"
       case "sell":
         return "bg-purple-500/10"
+      case "referral_commission":
+        return "bg-green-500/10"
       default:
         return "bg-gray-500/10"
     }
@@ -118,11 +124,11 @@ export default function TransactionsPage() {
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/10">
               <p className="text-gray-400 text-sm mb-2">Total Income</p>
-              <p className="text-3xl font-bold text-green-400">+{totalIncome.toFixed(2)} GX</p>
+              <p className="text-3xl font-bold text-green-400">+{totalIncome.toFixed(2)} AFX</p>
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/10">
               <p className="text-gray-400 text-sm mb-2">Total Expense</p>
-              <p className="text-3xl font-bold text-red-400">-{totalExpense.toFixed(2)} GX</p>
+              <p className="text-3xl font-bold text-red-400">-{totalExpense.toFixed(2)} AFX</p>
             </div>
           </div>
 
@@ -168,6 +174,16 @@ export default function TransactionsPage() {
             >
               Sells
             </button>
+            <button
+              onClick={() => setFilterType("referral_commission")}
+              className={`px-4 py-2 rounded-lg font-semibold text-sm transition ${
+                filterType === "referral_commission"
+                  ? "bg-gradient-to-r from-green-500 to-green-600 text-black shadow-lg shadow-green-500/50"
+                  : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
+              }`}
+            >
+              Referral Commissions
+            </button>
           </div>
 
           {/* Transactions List */}
@@ -194,7 +210,7 @@ export default function TransactionsPage() {
                     <div className="text-right">
                       <p className={`font-bold text-lg ${tx.amount > 0 ? "text-green-400" : "text-red-400"}`}>
                         {tx.amount > 0 ? "+" : ""}
-                        {tx.amount.toFixed(2)} GX
+                        {tx.amount.toFixed(2)} AFX
                       </p>
                       <p className="text-xs text-gray-400 capitalize">{tx.status}</p>
                     </div>

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { ArrowLeft } from "lucide-react"
@@ -19,14 +20,27 @@ export default function PostAdPage() {
   const router = useRouter()
   const [adType, setAdType] = useState<"buy" | "sell">("sell")
   const [loading, setLoading] = useState(false)
-  const [currentGXPrice, setCurrentGXPrice] = useState<number>(16)
+  const [currentAFXPrice, setCurrentAFXPrice] = useState<number>(16)
   const [formData, setFormData] = useState({
-    gxAmount: "",
-    pricePerGX: "",
+    afxAmount: "",
+    pricePerAFX: "",
     minAmount: "",
     maxAmount: "",
     accountNumber: "",
     termsOfTrade: "",
+  })
+
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("")
+  const [paymentDetails, setPaymentDetails] = useState({
+    mpesaNumber: "",
+    fullName: "",
+    paybillNumber: "",
+    paybillAccount: "",
+    bankName: "",
+    bankAccount: "",
+    bankAccountName: "",
+    airtelNumber: "",
+    airtelFullName: "",
   })
 
   const [paymentMethods, setPaymentMethods] = useState({
@@ -37,37 +51,95 @@ export default function PostAdPage() {
   })
 
   useEffect(() => {
-    const fetchGXPrice = async () => {
+    const fetchAFXPrice = async () => {
       const supabase = createClient()
-      const { data, error } = await supabase.from("gx_current_price").select("price").single()
+
+      // Fetch latest price from coin_ticks table
+      const { data, error } = await supabase
+        .from("coin_ticks")
+        .select("price")
+        .order("tick_timestamp", { ascending: false })
+        .limit(1)
+        .single()
 
       if (!error && data) {
-        setCurrentGXPrice(data.price)
-        setFormData((prev) => ({ ...prev, pricePerGX: data.price.toString() }))
+        const livePrice = Number(data.price)
+        setCurrentAFXPrice(livePrice)
+        setFormData((prev) => ({ ...prev, pricePerAFX: livePrice.toFixed(2) }))
+      } else {
+        // Fallback to default price if no data
+        console.error("[v0] Error fetching live AFX price:", error)
+        setCurrentAFXPrice(16)
+        setFormData((prev) => ({ ...prev, pricePerAFX: "16.00" }))
       }
     }
 
-    fetchGXPrice()
+    fetchAFXPrice()
+
+    const interval = setInterval(fetchAFXPrice, 5000)
+    return () => clearInterval(interval)
   }, [])
 
-  const minAllowedPrice = (currentGXPrice * 0.96).toFixed(2)
-  const maxAllowedPrice = (currentGXPrice * 1.04).toFixed(2)
+  const minAllowedPrice = (currentAFXPrice * 0.96).toFixed(2)
+  const maxAllowedPrice = (currentAFXPrice * 1.04).toFixed(2)
+
+  const validatePaymentDetails = (): boolean => {
+    if (adType === "sell") {
+      if (!selectedPaymentMethod) {
+        alert("Please select a payment method")
+        return false
+      }
+
+      switch (selectedPaymentMethod) {
+        case "mpesa":
+          if (!paymentDetails.mpesaNumber || !paymentDetails.fullName) {
+            alert("Please fill in M-Pesa number and full name")
+            return false
+          }
+          break
+        case "paybill":
+          if (!paymentDetails.paybillNumber || !paymentDetails.paybillAccount) {
+            alert("Please fill in Paybill number and account number")
+            return false
+          }
+          break
+        case "bank":
+          if (!paymentDetails.bankName || !paymentDetails.bankAccount || !paymentDetails.bankAccountName) {
+            alert("Please fill in bank name, account number, and account name")
+            return false
+          }
+          break
+        case "airtel":
+          if (!paymentDetails.airtelNumber || !paymentDetails.airtelFullName) {
+            alert("Please fill in Airtel Money number and full name")
+            return false
+          }
+          break
+      }
+    }
+    return true
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!validatePaymentDetails()) {
+      return
+    }
+
     setLoading(true)
 
     try {
       const supabase = createClient()
 
-      if (Number.parseFloat(formData.gxAmount) < 50) {
-        alert("Minimum amount to post an ad is 50 GX")
+      if (Number.parseFloat(formData.afxAmount) < 50) {
+        alert("Minimum amount to post an ad is 50 AFX")
         setLoading(false)
         return
       }
 
-      const pricePerGX = Number.parseFloat(formData.pricePerGX)
-      if (pricePerGX < Number.parseFloat(minAllowedPrice) || pricePerGX > Number.parseFloat(maxAllowedPrice)) {
+      const pricePerAFX = Number.parseFloat(formData.pricePerAFX)
+      if (pricePerAFX < Number.parseFloat(minAllowedPrice) || pricePerAFX > Number.parseFloat(maxAllowedPrice)) {
         alert(`Price must be between ${minAllowedPrice} and ${maxAllowedPrice} KES (±4% of current price)`)
         setLoading(false)
         return
@@ -83,25 +155,26 @@ export default function PostAdPage() {
         return
       }
 
-      const selectedPaymentMethods = []
-      if (paymentMethods.mpesa) selectedPaymentMethods.push("M-Pesa")
-      if (paymentMethods.bankTransfer) selectedPaymentMethods.push("Bank Transfer")
-      if (paymentMethods.paybill) selectedPaymentMethods.push("M-Pesa Paybill")
-      if (paymentMethods.airtelMoney) selectedPaymentMethods.push("Airtel Money")
-
-      const paymentMethodsString = selectedPaymentMethods.join(", ")
-
       if (adType === "sell") {
-        const { data, error } = await supabase.rpc("post_sell_ad_with_escrow", {
+        const { data, error } = await supabase.rpc("post_sell_ad_with_payment_details", {
           p_user_id: user.id,
-          p_gx_amount: Number.parseFloat(formData.gxAmount),
-          p_price_per_gx: pricePerGX,
+          p_afx_amount: Number.parseFloat(formData.afxAmount),
+          p_price_per_afx: pricePerAFX,
           p_min_amount: Number.parseFloat(formData.minAmount),
           p_max_amount: Number.parseFloat(formData.maxAmount),
-          p_account_number: formData.accountNumber || null,
-          p_mpesa_number: null,
-          p_paybill_number: null,
-          p_airtel_money: null,
+          p_payment_method: selectedPaymentMethod,
+          p_mpesa_number: selectedPaymentMethod === "mpesa" ? paymentDetails.mpesaNumber : null,
+          p_full_name: selectedPaymentMethod === "mpesa" ? paymentDetails.fullName : null,
+          p_paybill_number: selectedPaymentMethod === "paybill" ? paymentDetails.paybillNumber : null,
+          p_account_number:
+            selectedPaymentMethod === "paybill"
+              ? paymentDetails.paybillAccount
+              : selectedPaymentMethod === "bank"
+                ? paymentDetails.bankAccount
+                : null,
+          p_bank_name: selectedPaymentMethod === "bank" ? paymentDetails.bankName : null,
+          p_account_name: selectedPaymentMethod === "bank" ? paymentDetails.bankAccountName : null,
+          p_airtel_number: selectedPaymentMethod === "airtel" ? paymentDetails.airtelNumber : null,
           p_terms_of_trade: formData.termsOfTrade || null,
         })
 
@@ -114,14 +187,22 @@ export default function PostAdPage() {
         alert("Sell ad posted successfully! Your coins have been locked for this ad.")
         router.push("/p2p")
       } else {
+        const selectedPaymentMethods = []
+        if (paymentMethods.mpesa) selectedPaymentMethods.push("M-Pesa")
+        if (paymentMethods.bankTransfer) selectedPaymentMethods.push("Bank Transfer")
+        if (paymentMethods.paybill) selectedPaymentMethods.push("M-Pesa Paybill")
+        if (paymentMethods.airtelMoney) selectedPaymentMethods.push("Airtel Money")
+
+        const paymentMethodsString = selectedPaymentMethods.join(", ")
+
         const { data, error } = await supabase
           .from("p2p_ads")
           .insert({
             user_id: user.id,
             ad_type: adType,
-            gx_amount: Number.parseFloat(formData.gxAmount),
-            remaining_amount: Number.parseFloat(formData.gxAmount),
-            price_per_gx: pricePerGX,
+            afx_amount: Number.parseFloat(formData.afxAmount),
+            remaining_amount: Number.parseFloat(formData.afxAmount),
+            price_per_afx: pricePerAFX,
             min_amount: Number.parseFloat(formData.minAmount),
             max_amount: Number.parseFloat(formData.maxAmount),
             account_number: paymentMethodsString || null,
@@ -162,7 +243,7 @@ export default function PostAdPage() {
 
           <div className="mb-8">
             <h1 className="text-4xl font-bold mb-2">Post an Ad</h1>
-            <p className="text-gray-400">Create a buy or sell ad for GX coins (Minimum: 50 GX)</p>
+            <p className="text-gray-400">Create a buy or sell ad for AFX coins (Minimum: 50 AFX)</p>
           </div>
 
           <form onSubmit={handleSubmit} className="glass-card p-8 rounded-xl border border-white/10 space-y-6">
@@ -176,53 +257,53 @@ export default function PostAdPage() {
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="buy" id="buy" />
                   <Label htmlFor="buy" className="cursor-pointer">
-                    Buy GX
+                    Buy AFX
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="sell" id="sell" />
                   <Label htmlFor="sell" className="cursor-pointer">
-                    Sell GX
+                    Sell AFX
                   </Label>
                 </div>
               </RadioGroup>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gxAmount">Amount of GX * (Minimum: 50 GX)</Label>
+              <Label htmlFor="afxAmount">Amount of AFX * (Minimum: 50 AFX)</Label>
               <Input
-                id="gxAmount"
+                id="afxAmount"
                 type="number"
                 step="0.01"
                 min="50"
-                placeholder="Enter GX amount (min 50)"
-                value={formData.gxAmount}
-                onChange={(e) => setFormData({ ...formData, gxAmount: e.target.value })}
+                placeholder="Enter AFX amount (min 50)"
+                value={formData.afxAmount}
+                onChange={(e) => setFormData({ ...formData, afxAmount: e.target.value })}
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="pricePerGX">Price per GX (KES) *</Label>
+              <Label htmlFor="pricePerAFX">Price per AFX (KES) *</Label>
               <Input
-                id="pricePerGX"
+                id="pricePerAFX"
                 type="number"
                 step="0.01"
                 min={minAllowedPrice}
                 max={maxAllowedPrice}
                 placeholder={`Between ${minAllowedPrice} - ${maxAllowedPrice} KES`}
-                value={formData.pricePerGX}
-                onChange={(e) => setFormData({ ...formData, pricePerGX: e.target.value })}
+                value={formData.pricePerAFX}
+                onChange={(e) => setFormData({ ...formData, pricePerAFX: e.target.value })}
                 required
               />
               <p className="text-xs text-gray-400">
-                Current GX price: {currentGXPrice} KES. Allowed range: {minAllowedPrice} - {maxAllowedPrice} KES (±4%)
+                Current AFX price: {currentAFXPrice} KES. Allowed range: {minAllowedPrice} - {maxAllowedPrice} KES (±4%)
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="minAmount">Min Amount (GX) * (Minimum: 2 GX)</Label>
+                <Label htmlFor="minAmount">Min Amount (AFX) * (Minimum: 2 AFX)</Label>
                 <Input
                   id="minAmount"
                   type="number"
@@ -235,7 +316,7 @@ export default function PostAdPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="maxAmount">Max Amount (GX) *</Label>
+                <Label htmlFor="maxAmount">Max Amount (AFX) *</Label>
                 <Input
                   id="maxAmount"
                   type="number"
@@ -251,7 +332,152 @@ export default function PostAdPage() {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Payment Methods</h3>
 
-              {adType === "buy" ? (
+              {adType === "sell" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Select Payment Method *</Label>
+                    <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+                      <SelectTrigger className="bg-white/5 border-white/10">
+                        <SelectValue placeholder="Choose payment method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mpesa">M-Pesa Personal</SelectItem>
+                        <SelectItem value="paybill">M-Pesa Paybill</SelectItem>
+                        <SelectItem value="bank">Bank Transfer</SelectItem>
+                        <SelectItem value="airtel">Airtel Money</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedPaymentMethod === "mpesa" && (
+                    <div className="space-y-3 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="mpesaNumber">M-Pesa Number *</Label>
+                        <Input
+                          id="mpesaNumber"
+                          type="tel"
+                          placeholder="e.g., 0712345678"
+                          value={paymentDetails.mpesaNumber}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, mpesaNumber: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="fullName">Full Name (as registered on M-Pesa) *</Label>
+                        <Input
+                          id="fullName"
+                          type="text"
+                          placeholder="e.g., John Doe"
+                          value={paymentDetails.fullName}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, fullName: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "paybill" && (
+                    <div className="space-y-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="paybillNumber">Paybill Number *</Label>
+                        <Input
+                          id="paybillNumber"
+                          type="text"
+                          placeholder="e.g., 123456"
+                          value={paymentDetails.paybillNumber}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, paybillNumber: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paybillAccount">Account Number *</Label>
+                        <Input
+                          id="paybillAccount"
+                          type="text"
+                          placeholder="e.g., ACC123456"
+                          value={paymentDetails.paybillAccount}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, paybillAccount: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "bank" && (
+                    <div className="space-y-3 p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="bankName">Bank Name *</Label>
+                        <Input
+                          id="bankName"
+                          type="text"
+                          placeholder="e.g., Equity Bank"
+                          value={paymentDetails.bankName}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, bankName: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bankAccount">Account Number *</Label>
+                        <Input
+                          id="bankAccount"
+                          type="text"
+                          placeholder="e.g., 1234567890"
+                          value={paymentDetails.bankAccount}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, bankAccount: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bankAccountName">Account Name *</Label>
+                        <Input
+                          id="bankAccountName"
+                          type="text"
+                          placeholder="e.g., John Doe"
+                          value={paymentDetails.bankAccountName}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, bankAccountName: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPaymentMethod === "airtel" && (
+                    <div className="space-y-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="airtelNumber">Airtel Money Number *</Label>
+                        <Input
+                          id="airtelNumber"
+                          type="tel"
+                          placeholder="e.g., 0712345678"
+                          value={paymentDetails.airtelNumber}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, airtelNumber: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="airtelFullName">Full Name (as registered on Airtel Money) *</Label>
+                        <Input
+                          id="airtelFullName"
+                          type="text"
+                          placeholder="e.g., John Doe"
+                          value={paymentDetails.airtelFullName}
+                          onChange={(e) => setPaymentDetails({ ...paymentDetails, airtelFullName: e.target.value })}
+                          required
+                          className="bg-white/5 border-white/10"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-400">Select payment methods you accept:</p>
                   <div className="flex items-center space-x-2">
@@ -301,17 +527,6 @@ export default function PostAdPage() {
                     </Label>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="accountNumber">Account Number / Payment Details</Label>
-                  <Input
-                    id="accountNumber"
-                    type="text"
-                    placeholder="Enter your payment details"
-                    value={formData.accountNumber}
-                    onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-                  />
-                </div>
               )}
             </div>
 
@@ -338,11 +553,11 @@ export default function PostAdPage() {
           <div className="mt-8 glass-card p-8 rounded-xl border border-blue-500/30 bg-blue-500/10">
             <h3 className="font-bold text-white mb-4">Tips for Creating Successful Ads</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>Minimum posting amount: 50 GX</li>
-              <li>Minimum trade amount: 2 GX</li>
-              <li>Price must be within ±4% of current GX price</li>
+              <li>Minimum posting amount: 50 AFX</li>
+              <li>Minimum trade amount: 2 AFX</li>
+              <li>Price must be within ±4% of current AFX price</li>
               <li>Set competitive prices to attract more traders</li>
-              <li>Provide multiple payment methods for flexibility</li>
+              <li>Provide accurate payment details for smooth transactions</li>
               <li>Write clear terms to avoid misunderstandings</li>
               <li>Respond quickly to trade requests for better ratings</li>
             </ul>

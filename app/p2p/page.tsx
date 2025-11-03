@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus, History, FileText, Wallet, CheckCircle2, Shield, Star } from "lucide-react"
+import { Plus, History, FileText, Wallet, CheckCircle2, Shield, Star, ArrowLeftRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,13 +9,13 @@ import Footer from "@/components/footer"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { fetchAvailableBalance } from "@/lib/supabase/utils" // Declare fetchAvailableBalance
+import { BalanceTransferModal } from "@/components/balance-transfer-modal"
 
 interface Ad {
   id: string
   user_id: string
   ad_type: string
-  gx_amount: number
+  afx_amount: number
   min_amount: number
   max_amount: number
   account_number: string | null
@@ -30,7 +30,7 @@ interface Ad {
     rating: number | null
   }
   remaining_amount?: number
-  price_per_gx?: number
+  price_per_afx?: number
 }
 
 interface UserStats {
@@ -48,7 +48,9 @@ export default function P2PMarket() {
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy")
   const [ads, setAds] = useState<Ad[]>([])
   const [loading, setLoading] = useState(true)
-  const [availableBalance, setAvailableBalance] = useState<number | null>(null)
+  const [p2pBalance, setP2pBalance] = useState<number>(0)
+  const [dashboardBalance, setDashboardBalance] = useState<number>(0)
+  const [showTransferModal, setShowTransferModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [initiatingTrade, setInitiatingTrade] = useState<string | null>(null)
@@ -56,10 +58,45 @@ export default function P2PMarket() {
 
   const [userStats, setUserStats] = useState<{ [key: string]: UserStats }>({})
 
+  const fetchBalance = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
+
+    const { data: coins } = await supabase
+      .from("coins")
+      .select("amount")
+      .eq("user_id", user.id)
+      .eq("status", "available")
+
+    if (coins) {
+      const totalBalance = coins.reduce((sum, coin) => sum + Number(coin.amount), 0)
+      setDashboardBalance(totalBalance)
+    }
+
+    const { data: tradeCoins } = await supabase
+      .from("trade_coins")
+      .select("amount")
+      .eq("user_id", user.id)
+      .eq("status", "available")
+
+    if (tradeCoins) {
+      const totalP2PBalance = tradeCoins.reduce((sum, coin) => sum + Number(coin.amount), 0)
+      setP2pBalance(totalP2PBalance)
+    }
+
+    setIsLoading(false)
+  }
+
   useEffect(() => {
-    fetchAvailableBalance(setAvailableBalance, setIsLoading)
+    fetchBalance()
     getCurrentUser()
-    const interval = setInterval(() => fetchAvailableBalance(setAvailableBalance, setIsLoading), 5000)
+    const interval = setInterval(fetchBalance, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -155,16 +192,16 @@ export default function P2PMarket() {
 
       const customAmount = Number.parseFloat(tradeAmounts[ad.id] || "0")
       const tradeAmount = customAmount > 0 ? customAmount : ad.min_amount
-      const availableAmount = ad.remaining_amount || ad.gx_amount
+      const availableAmount = ad.remaining_amount || ad.afx_amount
 
       if (tradeAmount < 2) {
-        alert("Minimum trade amount is 2 GX")
+        alert("Minimum trade amount is 2 AFX")
         setInitiatingTrade(null)
         return
       }
 
       if (tradeAmount > availableAmount) {
-        alert(`Maximum available amount is ${availableAmount} GX`)
+        alert(`Maximum available amount is ${availableAmount} AFX`)
         setInitiatingTrade(null)
         return
       }
@@ -172,7 +209,7 @@ export default function P2PMarket() {
       const { data: tradeId, error } = await supabase.rpc("initiate_p2p_trade_v2", {
         p_ad_id: ad.id,
         p_buyer_id: user.id,
-        p_gx_amount: tradeAmount,
+        p_afx_amount: tradeAmount,
       })
 
       if (error) {
@@ -190,13 +227,46 @@ export default function P2PMarket() {
     }
   }
 
-  function getPaymentMethods(ad: Ad) {
-    const methods = []
-    if (ad.mpesa_number) methods.push("M-Pesa")
-    if (ad.paybill_number) methods.push("Paybill")
-    if (ad.airtel_money) methods.push("Airtel Money")
-    if (ad.account_number) methods.push("Bank Account")
-    return methods.join(", ") || "Not specified"
+  function getPaymentMethods(ad: Ad): { name: string; color: string }[] {
+    const methods: { name: string; color: string }[] = []
+
+    // Check individual payment method fields
+    if (ad.mpesa_number) {
+      methods.push({ name: "M-Pesa", color: "bg-green-500" })
+    }
+    if (ad.paybill_number) {
+      methods.push({ name: "M-Pesa Paybill", color: "bg-yellow-500" })
+    }
+    if (ad.airtel_money) {
+      methods.push({ name: "Airtel Money", color: "bg-red-500" })
+    }
+
+    // Parse account_number field for buy ads (contains concatenated payment methods)
+    if (ad.account_number) {
+      const accountStr = ad.account_number.toLowerCase()
+
+      // Check if it's a concatenated payment methods string (for buy ads)
+      if (accountStr.includes("m-pesa") && !ad.mpesa_number) {
+        if (accountStr.includes("paybill")) {
+          methods.push({ name: "M-Pesa Paybill", color: "bg-yellow-500" })
+        } else {
+          methods.push({ name: "M-Pesa", color: "bg-green-500" })
+        }
+      }
+      if (accountStr.includes("bank") && !methods.some((m) => m.name.includes("Bank"))) {
+        methods.push({ name: "Bank Transfer", color: "bg-blue-500" })
+      }
+      if (accountStr.includes("airtel") && !ad.airtel_money) {
+        methods.push({ name: "Airtel Money", color: "bg-red-500" })
+      }
+
+      // If no payment method keywords found, treat as bank account details
+      if (methods.length === 0 && ad.account_number.length > 0) {
+        methods.push({ name: "Bank Transfer", color: "bg-blue-500" })
+      }
+    }
+
+    return methods
   }
 
   function renderStarRating(rating: number) {
@@ -224,7 +294,7 @@ export default function P2PMarket() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <div className="mb-6">
             <h1 className="text-3xl font-bold mb-2">P2P Trading</h1>
-            <p className="text-gray-400 text-sm">Buy and sell GX directly with verified traders</p>
+            <p className="text-gray-400 text-sm">Buy and sell AFX directly with verified traders</p>
           </div>
 
           <div className="bg-[#1a1d24] rounded-xl p-4 mb-6 border border-white/5">
@@ -253,13 +323,21 @@ export default function P2PMarket() {
                 </Button>
               </div>
 
-              {/* Center: Available balance */}
-              <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg border border-white/10">
-                <Wallet size={18} className="text-[#0ecb81]" />
-                <span className="text-sm text-gray-400">Available:</span>
-                <span className="font-semibold text-white">
-                  {isLoading ? "..." : availableBalance !== null ? `${availableBalance.toFixed(2)} GX` : "0.00 GX"}
-                </span>
+              {/* Center: P2P Balance with Transfer Button */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg border border-white/10">
+                  <Wallet size={18} className="text-[#0ecb81]" />
+                  <span className="text-sm text-gray-400">P2P Balance:</span>
+                  <span className="font-semibold text-white">{isLoading ? "..." : `${p2pBalance.toFixed(2)} AFX`}</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setShowTransferModal(true)}
+                  className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
+                >
+                  <ArrowLeftRight size={16} className="mr-1" />
+                  Transfer
+                </Button>
               </div>
 
               {/* Right side: Action buttons */}
@@ -370,17 +448,17 @@ export default function P2PMarket() {
                       <div className="flex-1 border-l border-white/5 pl-6">
                         <div className="mb-4">
                           <div className="text-2xl font-bold text-white mb-1">
-                            KSh {ad.price_per_gx || "16.29"} <span className="text-base text-gray-400">/ GX</span>
+                            KSh {ad.price_per_afx || "16.29"} <span className="text-base text-gray-400">/ AFX</span>
                           </div>
                           <div className="flex items-center gap-4 text-xs text-gray-400">
                             <div>
                               <span className="text-gray-500">Available </span>
-                              <span className="text-white font-medium">{ad.remaining_amount || ad.gx_amount} GX</span>
+                              <span className="text-white font-medium">{ad.remaining_amount || ad.afx_amount} AFX</span>
                             </div>
                             <div>
                               <span className="text-gray-500">Limit </span>
                               <span className="text-white font-medium">
-                                {ad.min_amount}-{ad.max_amount} GX
+                                {ad.min_amount}-{ad.max_amount} AFX
                               </span>
                             </div>
                           </div>
@@ -389,34 +467,22 @@ export default function P2PMarket() {
                         <div className="mb-4">
                           <div className="text-xs text-gray-500 mb-2">Payment</div>
                           <div className="flex flex-wrap gap-2">
-                            {ad.mpesa_number && (
-                              <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-green-500" />
-                                <span className="text-xs text-gray-300">M-Pesa</span>
-                              </div>
-                            )}
-                            {ad.paybill_number && (
-                              <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-yellow-500" />
-                                <span className="text-xs text-gray-300">Paybill</span>
-                              </div>
-                            )}
-                            {ad.airtel_money && (
-                              <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-red-500" />
-                                <span className="text-xs text-gray-300">Airtel Money</span>
-                              </div>
-                            )}
-                            {ad.account_number && (
-                              <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                <span className="text-xs text-gray-300">Bank</span>
-                              </div>
+                            {getPaymentMethods(ad).length > 0 ? (
+                              getPaymentMethods(ad).map((method, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10"
+                                >
+                                  <div className={`w-2 h-2 rounded-full ${method.color}`} />
+                                  <span className="text-xs text-gray-300">{method.name}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-xs text-gray-500">No payment method selected</span>
                             )}
                           </div>
                         </div>
 
-                        {/* Terms */}
                         {ad.terms_of_trade && <div className="text-xs text-gray-400 italic">"{ad.terms_of_trade}"</div>}
                       </div>
 
@@ -425,15 +491,15 @@ export default function P2PMarket() {
                           <>
                             <div>
                               <Label htmlFor={`amount-${ad.id}`} className="text-xs text-gray-400 mb-2 block">
-                                Enter amount (GX)
+                                Enter amount (AFX)
                               </Label>
                               <Input
                                 id={`amount-${ad.id}`}
                                 type="number"
                                 min="2"
-                                max={ad.remaining_amount || ad.gx_amount}
+                                max={ad.remaining_amount || ad.afx_amount}
                                 step="0.01"
-                                placeholder={`${ad.min_amount}-${ad.remaining_amount || ad.gx_amount}`}
+                                placeholder={`${ad.min_amount}-${ad.remaining_amount || ad.afx_amount}`}
                                 value={tradeAmounts[ad.id] || ""}
                                 onChange={(e) => setTradeAmounts((prev) => ({ ...prev, [ad.id]: e.target.value }))}
                                 className="bg-white/5 border-white/10 text-white h-10"
@@ -448,7 +514,11 @@ export default function P2PMarket() {
                               onClick={() => initiateTrade(ad)}
                               disabled={initiatingTrade === ad.id}
                             >
-                              {initiatingTrade === ad.id ? "Processing..." : activeTab === "buy" ? "Buy GX" : "Sell GX"}
+                              {initiatingTrade === ad.id
+                                ? "Processing..."
+                                : activeTab === "buy"
+                                  ? "Buy AFX"
+                                  : "Sell AFX"}
                             </Button>
                           </>
                         )}
@@ -470,6 +540,15 @@ export default function P2PMarket() {
         </div>
       </main>
       <Footer />
+
+      {/* BalanceTransferModal */}
+      <BalanceTransferModal
+        open={showTransferModal}
+        onOpenChange={setShowTransferModal}
+        dashboardBalance={dashboardBalance}
+        p2pBalance={p2pBalance}
+        onTransferComplete={fetchBalance}
+      />
     </div>
   )
 }

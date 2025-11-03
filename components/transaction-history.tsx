@@ -1,73 +1,81 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ArrowUpRight, ArrowDownLeft, Gift } from "lucide-react"
+import { ArrowUpRight, Gift, Coins, Users } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 interface Transaction {
-  id: number
-  type: "trade" | "buy" | "sell" | "claim"
+  id: string
+  type: string
   amount: number
   time: string
-  status: "completed" | "pending"
+  status: string
 }
 
 export function TransactionHistory() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const loadTransactions = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+  const loadTransactions = async () => {
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-      if (user) {
-        const { data: transactionsData } = await supabase
-          .from("transactions")
-          .select("*")
-          .eq("user_id", user.id)
-          .neq("type", "mining")
-          .order("created_at", { ascending: false })
-          .limit(5)
+    if (user) {
+      const { data: transactionsData } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5)
 
-        if (transactionsData && transactionsData.length > 0) {
-          const formattedTransactions = transactionsData.map((tx, index) => ({
-            id: index + 1,
-            type: tx.type as "trade" | "buy" | "sell" | "claim",
-            amount: Number(tx.amount),
-            time: new Date(tx.created_at).toLocaleString(),
-            status: tx.status as "completed" | "pending",
-          }))
-          setTransactions(formattedTransactions)
-        }
+      if (transactionsData && transactionsData.length > 0) {
+        const formattedTransactions = transactionsData.map((tx) => ({
+          id: tx.id,
+          type: tx.type,
+          amount: Number(tx.amount),
+          time: new Date(tx.created_at).toLocaleString(),
+          status: tx.status,
+        }))
+        setTransactions(formattedTransactions)
       }
     }
+    setLoading(false)
+  }
 
+  useEffect(() => {
     loadTransactions()
+    // Auto-refresh every 10 seconds
+    const interval = setInterval(loadTransactions, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   const getIcon = (type: string) => {
     switch (type) {
+      case "mining":
+        return <Coins className="w-4 h-4 text-yellow-400" />
+      case "referral_commission":
+        return <Users className="w-4 h-4 text-blue-400" />
+      case "p2p_trade":
+        return <ArrowUpRight className="w-4 h-4 text-green-400" />
       case "claim":
-        return <Gift className="w-4 h-4 text-yellow-400" />
-      case "buy":
-        return <ArrowDownLeft className="w-4 h-4 text-blue-400" />
-      case "sell":
-        return <ArrowUpRight className="w-4 h-4 text-purple-400" />
+        return <Gift className="w-4 h-4 text-purple-400" />
       default:
-        return <ArrowUpRight className="w-4 h-4 text-red-400" />
+        return <ArrowUpRight className="w-4 h-4 text-gray-400" />
     }
   }
 
   const getLabel = (type: string) => {
     switch (type) {
+      case "mining":
+        return "Mining Reward"
+      case "referral_commission":
+        return "Referral Commission"
+      case "p2p_trade":
+        return "P2P Trade"
       case "claim":
         return "Coins Claimed"
-      case "buy":
-        return "Bought GX"
-      case "sell":
-        return "Sold GX"
       default:
         return "Transaction"
     }
@@ -75,11 +83,13 @@ export function TransactionHistory() {
 
   const getBackgroundColor = (type: string) => {
     switch (type) {
-      case "claim":
+      case "mining":
         return "bg-yellow-500/10"
-      case "buy":
+      case "referral_commission":
         return "bg-blue-500/10"
-      case "sell":
+      case "p2p_trade":
+        return "bg-green-500/10"
+      case "claim":
         return "bg-purple-500/10"
       default:
         return "bg-gray-500/10"
@@ -90,14 +100,18 @@ export function TransactionHistory() {
     <div className="glass-card p-6 rounded-2xl border border-white/5">
       <h3 className="text-xl font-bold mb-6">Recent Activity</h3>
 
-      {transactions.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500" />
+        </div>
+      ) : transactions.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 mb-2">No transactions yet</div>
           <p className="text-sm text-gray-500">Start trading to see your activity here</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {transactions.slice(0, 5).map((tx) => (
+          {transactions.map((tx) => (
             <div
               key={tx.id}
               className="flex items-center justify-between p-4 bg-white/5 rounded-lg hover:bg-white/10 transition"
@@ -112,19 +126,13 @@ export function TransactionHistory() {
               <div className="text-right">
                 <p className={`font-bold ${tx.amount > 0 ? "text-green-400" : "text-red-400"}`}>
                   {tx.amount > 0 ? "+" : ""}
-                  {tx.amount.toFixed(2)}
+                  {tx.amount.toFixed(2)} AFX
                 </p>
                 <p className="text-xs text-gray-400 capitalize">{tx.status}</p>
               </div>
             </div>
           ))}
         </div>
-      )}
-
-      {transactions.length > 0 && (
-        <button className="w-full mt-6 px-4 py-2 rounded-lg border border-green-500/30 text-green-400 hover:bg-green-500/10 transition text-sm font-semibold">
-          View All Transactions
-        </button>
       )}
     </div>
   )

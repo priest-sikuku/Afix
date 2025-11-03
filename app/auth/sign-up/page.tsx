@@ -104,7 +104,11 @@ export default function SignUp() {
         referrerId = referrerData.id
       }
 
-      const referralCode = `GX_${formData.username.toUpperCase()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+      let referralCode = ""
+      for (let i = 0; i < 6; i++) {
+        referralCode += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
 
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
@@ -164,7 +168,7 @@ export default function SignUp() {
       <main className="flex-1 flex items-center justify-center py-12 px-4">
         <div className="glass-card p-8 rounded-2xl border border-white/5 w-full max-w-md">
           <h1 className="text-3xl font-bold mb-2">Create Account</h1>
-          <p className="text-gray-400 mb-8">Join GrowX and start trading today</p>
+          <p className="text-gray-400 mb-8">Join AfriX and start trading today</p>
 
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6 text-red-400 text-sm">
@@ -256,7 +260,7 @@ export default function SignUp() {
                 className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-green-500/50 transition"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Get 2% trading commission + 1% claim commission from your referrals
+                Earn 2% trading commission + 1% mining commission from your referrals
               </p>
             </div>
 
@@ -285,7 +289,7 @@ export default function SignUp() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full px-4 py-3 rounded-lg btn-primary-gx font-semibold hover:shadow-lg hover:shadow-green-500/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 rounded-lg btn-primary-afx font-semibold hover:shadow-lg hover:shadow-green-500/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Creating Account..." : "Create Account"}
             </button>

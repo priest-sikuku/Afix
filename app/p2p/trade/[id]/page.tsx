@@ -2,12 +2,10 @@
 
 import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, User, CheckCircle, XCircle, Send, Star } from "lucide-react"
+import { ArrowLeft, User, CheckCircle, XCircle, Send, Clock, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { createClient } from "@/lib/supabase/client"
@@ -17,12 +15,18 @@ interface Trade {
   ad_id: string
   buyer_id: string
   seller_id: string
-  gx_amount: number
+  afx_amount: number // Renamed from gx_amount to afx_amount
   escrow_amount: number
   status: string
+  is_paid: boolean | null // Added for two-step confirmation
+  paid_at: string | null // Added for payment timestamp
   payment_confirmed_at: string | null
   coins_released_at: string | null
+  released_at: string | null // Added for release timestamp
   expires_at: string
+  expired_at: string | null // Added for expiry tracking
+  cancelled_by: string | null // Added to track who cancelled
+  cancelled_at: string | null // Added for cancellation timestamp
   created_at: string
   buyer_username?: string | null
   buyer_email?: string | null
@@ -33,6 +37,9 @@ interface Trade {
   ad_paybill_number?: string | null
   ad_airtel_money?: string | null
   ad_terms_of_trade?: string | null
+  ad_full_name?: string | null
+  ad_bank_name?: string | null
+  ad_account_name?: string | null
 }
 
 interface Message {
@@ -62,6 +69,8 @@ export default function TradePage() {
   const [submittingRating, setSubmittingRating] = useState(false)
   const [existingRating, setExistingRating] = useState<any>(null)
 
+  const [timeRemaining, setTimeRemaining] = useState<string>("")
+
   useEffect(() => {
     fetchTrade()
     getCurrentUser()
@@ -74,7 +83,41 @@ export default function TradePage() {
   }, [params.id])
 
   useEffect(() => {
-    scrollToBottom()
+    if (!trade || trade.status === "completed" || trade.status === "cancelled" || trade.status === "expired") {
+      return
+    }
+
+    const updateCountdown = () => {
+      if (!trade.expires_at) return
+
+      const now = new Date().getTime()
+      const expiryTime = new Date(trade.expires_at).getTime()
+      const distance = expiryTime - now
+
+      if (distance < 0) {
+        setTimeRemaining("Expired")
+        return
+      }
+
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000)
+
+      setTimeRemaining(`${minutes}m ${seconds}s`)
+    }
+
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+
+    return () => clearInterval(interval)
+  }, [trade])
+
+  const [scrollToBottomTimeout, setScrollToBottomTimeout] = useState<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    if (scrollToBottomTimeout) {
+      clearTimeout(scrollToBottomTimeout)
+    }
+    setScrollToBottomTimeout(setTimeout(scrollToBottom, 100))
   }, [messages])
 
   function scrollToBottom() {
@@ -124,7 +167,9 @@ export default function TradePage() {
       // Fetch ad details
       const { data: adData } = await supabase
         .from("p2p_ads")
-        .select("account_number, mpesa_number, paybill_number, airtel_money, terms_of_trade")
+        .select(
+          "account_number, mpesa_number, paybill_number, airtel_money, terms_of_trade, full_name, bank_name, account_name",
+        )
         .eq("id", tradeData.ad_id)
         .single()
 
@@ -140,6 +185,9 @@ export default function TradePage() {
         ad_paybill_number: adData?.paybill_number || null,
         ad_airtel_money: adData?.airtel_money || null,
         ad_terms_of_trade: adData?.terms_of_trade || null,
+        ad_full_name: adData?.full_name || null,
+        ad_bank_name: adData?.bank_name || null,
+        ad_account_name: adData?.account_name || null,
       }
 
       setTrade(combinedTrade)
@@ -347,29 +395,131 @@ export default function TradePage() {
   }
 
   function getStatusBadge(status: string) {
-    const statusConfig: Record<
-      string,
-      { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
-    > = {
-      pending: { label: "Pending", variant: "secondary" },
-      escrowed: { label: "In Escrow", variant: "default" },
-      payment_sent: { label: "Payment Sent", variant: "default" },
-      completed: { label: "Completed", variant: "default" },
-      cancelled: { label: "Cancelled", variant: "destructive" },
-      disputed: { label: "Disputed", variant: "destructive" },
+    const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
+      pending: { label: "Pending", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", icon: Clock },
+      escrowed: { label: "In Escrow", color: "bg-blue-500/10 text-blue-500 border-blue-500/20", icon: Clock },
+      payment_sent: {
+        label: "Payment Sent",
+        color: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+        icon: CheckCircle,
+      },
+      completed: { label: "Completed", color: "bg-green-500/10 text-green-500 border-green-500/20", icon: CheckCircle },
+      cancelled: { label: "Cancelled", color: "bg-red-500/10 text-red-500 border-red-500/20", icon: XCircle },
+      expired: { label: "Expired", color: "bg-gray-500/10 text-gray-500 border-gray-500/20", icon: AlertCircle },
+      disputed: {
+        label: "Disputed",
+        color: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+        icon: AlertCircle,
+      },
     }
-    const config = statusConfig[status] || { label: status, variant: "outline" }
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    const config = statusConfig[status] || {
+      label: status,
+      color: "bg-white/10 text-white border-white/20",
+      icon: Clock,
+    }
+    const Icon = config.icon
+
+    return (
+      <Badge variant="outline" className={`${config.color} flex items-center gap-1`}>
+        <Icon size={14} />
+        {config.label}
+      </Badge>
+    )
   }
 
   function getPaymentMethods() {
-    if (!trade) return ["Not specified"]
-    const methods = []
-    if (trade.ad_mpesa_number) methods.push(`M-Pesa: ${trade.ad_mpesa_number}`)
-    if (trade.ad_paybill_number) methods.push(`Paybill: ${trade.ad_paybill_number}`)
-    if (trade.ad_airtel_money) methods.push(`Airtel: ${trade.ad_airtel_money}`)
-    if (trade.ad_account_number) methods.push(`Account: ${trade.ad_account_number}`)
-    return methods.length > 0 ? methods : ["Not specified"]
+    if (!trade) return []
+
+    const methods: Array<{ type: string; label: string; value: string; copyable: boolean }> = []
+
+    if (trade.ad_mpesa_number) {
+      methods.push({
+        type: "M-Pesa Personal",
+        label: "M-Pesa Number",
+        value: trade.ad_mpesa_number,
+        copyable: true,
+      })
+      if (trade.ad_full_name) {
+        methods.push({
+          type: "M-Pesa Personal",
+          label: "Full Name",
+          value: trade.ad_full_name,
+          copyable: true,
+        })
+      }
+    }
+
+    if (trade.ad_paybill_number) {
+      methods.push({
+        type: "M-Pesa Paybill",
+        label: "Paybill Number",
+        value: trade.ad_paybill_number,
+        copyable: true,
+      })
+      if (trade.ad_account_number) {
+        methods.push({
+          type: "M-Pesa Paybill",
+          label: "Account Number",
+          value: trade.ad_account_number,
+          copyable: true,
+        })
+      }
+    }
+
+    if (trade.ad_bank_name) {
+      methods.push({
+        type: "Bank Transfer",
+        label: "Bank Name",
+        value: trade.ad_bank_name,
+        copyable: false,
+      })
+      if (trade.ad_account_number) {
+        methods.push({
+          type: "Bank Transfer",
+          label: "Account Number",
+          value: trade.ad_account_number,
+          copyable: true,
+        })
+      }
+      if (trade.ad_account_name) {
+        methods.push({
+          type: "Bank Transfer",
+          label: "Account Name",
+          value: trade.ad_account_name,
+          copyable: true,
+        })
+      }
+    }
+
+    if (trade.ad_airtel_money) {
+      methods.push({
+        type: "Airtel Money",
+        label: "Airtel Number",
+        value: trade.ad_airtel_money,
+        copyable: true,
+      })
+      if (trade.ad_full_name) {
+        methods.push({
+          type: "Airtel Money",
+          label: "Full Name",
+          value: trade.ad_full_name,
+          copyable: true,
+        })
+      }
+    }
+
+    return methods
+  }
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        alert(`${label} copied to clipboard!`)
+      })
+      .catch(() => {
+        alert("Failed to copy to clipboard")
+      })
   }
 
   const isBuyer = currentUserId === trade?.buyer_id
@@ -420,14 +570,29 @@ export default function TradePage() {
             <p className="text-gray-400">Trade ID: {trade.id}</p>
           </div>
 
+          {trade.status !== "completed" &&
+            trade.status !== "cancelled" &&
+            trade.status !== "expired" &&
+            timeRemaining && (
+              <div className="glass-card p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 mb-6">
+                <div className="flex items-center gap-3">
+                  <Clock size={20} className="text-yellow-400" />
+                  <div>
+                    <p className="font-semibold text-yellow-400">Time Remaining</p>
+                    <p className="text-sm text-gray-300">{timeRemaining} until trade expires</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="glass-card p-6 rounded-xl border border-white/10">
               <p className="text-gray-400 text-sm mb-2">Trade Amount</p>
-              <p className="text-3xl font-bold text-green-400">{trade.gx_amount} GX</p>
+              <p className="text-3xl font-bold text-green-400">{trade.afx_amount} AFX</p>
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/10">
               <p className="text-gray-400 text-sm mb-2">Escrow Amount</p>
-              <p className="text-3xl font-bold text-yellow-400">{trade.escrow_amount} GX</p>
+              <p className="text-3xl font-bold text-yellow-400">{trade.escrow_amount} AFX</p>
             </div>
             <div className="glass-card p-6 rounded-xl border border-white/10">
               <p className="text-gray-400 text-sm mb-2">Status</p>
@@ -435,8 +600,25 @@ export default function TradePage() {
             </div>
           </div>
 
+          {trade.is_paid && trade.status === "payment_sent" && (
+            <div className="glass-card p-6 rounded-xl border border-cyan-500/30 bg-cyan-500/10 mb-6">
+              <div className="flex items-center gap-3">
+                <CheckCircle size={24} className="text-cyan-400" />
+                <div className="flex-1">
+                  <p className="font-semibold text-cyan-400">Payment Marked as Sent</p>
+                  <p className="text-sm text-gray-300">
+                    {isBuyer
+                      ? "Waiting for seller to confirm and release coins"
+                      : "Please confirm payment received and release coins to buyer"}
+                  </p>
+                </div>
+                {trade.paid_at && <p className="text-xs text-gray-400">{new Date(trade.paid_at).toLocaleString()}</p>}
+              </div>
+            </div>
+          )}
+
           <div className="glass-card p-8 rounded-xl border border-white/10 mb-6">
-            <h3 className="text-xl font-semibold mb-6">Trade Information</h3>
+            <h3 className="text-xl font-semibold mb-4">Trade Information</h3>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
@@ -474,17 +656,38 @@ export default function TradePage() {
 
           <div className="glass-card p-8 rounded-xl border border-white/10 mb-6">
             <h3 className="text-xl font-semibold mb-4">Payment Details</h3>
-            <div className="space-y-2">
-              {getPaymentMethods().map((method, index) => (
-                <p key={index} className="text-sm p-3 bg-white/5 rounded-lg">
-                  {method}
-                </p>
-              ))}
-            </div>
+            {getPaymentMethods().length > 0 ? (
+              <div className="space-y-3">
+                {getPaymentMethods().map((method, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10"
+                  >
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-400 mb-1">{method.label}</p>
+                      <p className="text-sm font-semibold text-white">{method.value}</p>
+                    </div>
+                    {method.copyable && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyToClipboard(method.value, method.label)}
+                        className="ml-4 border-white/10 hover:bg-white/10"
+                      >
+                        Copy
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">No payment details specified</p>
+            )}
+
             {trade.ad_terms_of_trade && (
               <div className="mt-4">
                 <p className="text-sm text-gray-400 mb-2">Terms of Trade</p>
-                <p className="text-sm p-3 bg-white/5 rounded-lg">{trade.ad_terms_of_trade}</p>
+                <p className="text-sm p-3 bg-white/5 rounded-lg border border-white/10">{trade.ad_terms_of_trade}</p>
               </div>
             )}
           </div>
@@ -521,13 +724,22 @@ export default function TradePage() {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-                disabled={sendingMessage || trade.status === "completed" || trade.status === "cancelled"}
+                disabled={
+                  sendingMessage ||
+                  trade.status === "completed" ||
+                  trade.status === "cancelled" ||
+                  trade.status === "expired"
+                }
                 className="bg-white/5 border-white/10"
               />
               <Button
                 onClick={sendMessage}
                 disabled={
-                  sendingMessage || !newMessage.trim() || trade.status === "completed" || trade.status === "cancelled"
+                  sendingMessage ||
+                  !newMessage.trim() ||
+                  trade.status === "completed" ||
+                  trade.status === "cancelled" ||
+                  trade.status === "expired"
                 }
                 className="bg-gradient-to-r from-green-500 to-green-600 text-black hover:shadow-lg hover:shadow-green-500/50 transition"
               >
@@ -537,11 +749,11 @@ export default function TradePage() {
           </div>
 
           {/* Action Buttons */}
-          {trade.status !== "completed" && trade.status !== "cancelled" && (
+          {trade.status !== "completed" && trade.status !== "cancelled" && trade.status !== "expired" && (
             <div className="glass-card p-8 rounded-xl border border-white/10 mb-6">
               <h3 className="text-xl font-semibold mb-4">Actions</h3>
               <div className="flex flex-wrap gap-3">
-                {isBuyer && trade.status === "escrowed" && (
+                {isBuyer && (trade.status === "pending" || trade.status === "escrowed") && !trade.is_paid && (
                   <Button
                     onClick={markPaymentSent}
                     disabled={actionLoading}
@@ -555,18 +767,35 @@ export default function TradePage() {
                 {isSeller && (trade.status === "payment_sent" || trade.status === "escrowed") && (
                   <Button
                     onClick={releaseCoins}
-                    disabled={actionLoading}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-lg hover:shadow-blue-500/50 transition text-white"
+                    disabled={actionLoading || !trade.is_paid}
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:shadow-lg hover:shadow-blue-500/50 transition text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!trade.is_paid ? "Waiting for buyer to mark payment as sent" : "Release coins to buyer"}
                   >
                     <CheckCircle size={18} className="mr-2" />
                     {actionLoading ? "Processing..." : "Release Coins"}
                   </Button>
                 )}
 
-                <Button onClick={cancelTrade} disabled={actionLoading} variant="destructive">
-                  <XCircle size={18} className="mr-2" />
-                  {actionLoading ? "Processing..." : "Cancel Trade"}
-                </Button>
+                {(!trade.is_paid || isSeller) && (
+                  <Button
+                    onClick={cancelTrade}
+                    disabled={actionLoading}
+                    variant="destructive"
+                    title={
+                      trade.is_paid && isBuyer ? "Cannot cancel after marking payment as sent" : "Cancel this trade"
+                    }
+                  >
+                    <XCircle size={18} className="mr-2" />
+                    {actionLoading ? "Processing..." : "Cancel Trade"}
+                  </Button>
+                )}
+
+                {trade.is_paid && isBuyer && (
+                  <p className="text-sm text-gray-400 flex items-center gap-2">
+                    <AlertCircle size={16} />
+                    Cannot cancel after marking payment as sent
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -578,84 +807,50 @@ export default function TradePage() {
                 <CheckCircle size={24} className="text-green-400" />
                 <div>
                   <p className="font-semibold text-green-400">Trade Completed!</p>
-                  <p className="text-sm text-gray-400">Coins have been successfully transferred to the buyer.</p>
+                  <p className="text-sm text-gray-400">AFX coins have been successfully transferred to the buyer.</p>
+                  {trade.released_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Released at: {new Date(trade.released_at).toLocaleString()}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {trade.status === "completed" && !existingRating && (
-            <div className="glass-card p-8 rounded-xl border border-white/10 mb-6">
-              <h3 className="text-xl font-semibold mb-4">Rate this Trade</h3>
-              {!showRatingForm ? (
-                <Button
-                  onClick={() => setShowRatingForm(true)}
-                  className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-black hover:shadow-lg hover:shadow-yellow-500/50"
-                >
-                  <Star size={18} className="mr-2" />
-                  Rate {isBuyer ? "Seller" : "Buyer"}
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <Label>Rating *</Label>
-                    <div className="flex gap-2 mt-2">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => setRating(star)}
-                          className="transition-transform hover:scale-110"
-                        >
-                          <Star
-                            size={32}
-                            className={star <= rating ? "fill-yellow-400 text-yellow-400" : "text-gray-600"}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="ratingComment">Comment (Optional)</Label>
-                    <Textarea
-                      id="ratingComment"
-                      placeholder="Share your experience with this trader..."
-                      rows={3}
-                      value={ratingComment}
-                      onChange={(e) => setRatingComment(e.target.value)}
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={submitRating}
-                      disabled={submittingRating || rating === 0}
-                      className="bg-gradient-to-r from-green-500 to-green-600 text-black hover:shadow-lg hover:shadow-green-500/50"
-                    >
-                      {submittingRating ? "Submitting..." : "Submit Rating"}
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowRatingForm(false)} className="border-white/10">
-                      Cancel
-                    </Button>
-                  </div>
+          {trade.status === "cancelled" && (
+            <div className="glass-card p-8 bg-red-500/10 border-red-500/20 rounded-xl mb-6">
+              <div className="flex items-center gap-3">
+                <XCircle size={24} className="text-red-400" />
+                <div>
+                  <p className="font-semibold text-red-400">Trade Cancelled</p>
+                  <p className="text-sm text-gray-400">This trade has been cancelled and coins returned to seller.</p>
+                  {trade.cancelled_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Cancelled at: {new Date(trade.cancelled_at).toLocaleString()}
+                    </p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          {existingRating && (
-            <div className="glass-card p-8 rounded-xl border border-green-500/30 bg-green-500/10 mb-6">
-              <h3 className="text-xl font-semibold mb-2 text-green-400">You rated this trade</h3>
-              <div className="flex gap-1 mb-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star
-                    key={star}
-                    size={20}
-                    className={star <= existingRating.rating ? "fill-yellow-400 text-yellow-400" : "text-gray-600"}
-                  />
-                ))}
+          {trade.status === "expired" && (
+            <div className="glass-card p-8 bg-gray-500/10 border-gray-500/20 rounded-xl mb-6">
+              <div className="flex items-center gap-3">
+                <AlertCircle size={24} className="text-gray-400" />
+                <div>
+                  <p className="font-semibold text-gray-400">Trade Expired</p>
+                  <p className="text-sm text-gray-400">
+                    This trade expired after 30 minutes and coins were returned to seller.
+                  </p>
+                  {trade.expired_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Expired at: {new Date(trade.expired_at).toLocaleString()}
+                    </p>
+                  )}
+                </div>
               </div>
-              {existingRating.comment && <p className="text-sm text-gray-300">{existingRating.comment}</p>}
             </div>
           )}
         </div>

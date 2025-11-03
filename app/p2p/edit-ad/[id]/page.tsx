@@ -23,10 +23,10 @@ export default function EditAdPage() {
   const [saving, setSaving] = useState(false)
   const [currentPrice, setCurrentPrice] = useState(0)
   const [formData, setFormData] = useState({
-    gx_amount: "",
+    afx_amount: "",
     min_amount: "",
     max_amount: "",
-    price_per_gx: "",
+    price_per_afx: "",
     account_number: "",
     mpesa_number: "",
     paybill_number: "",
@@ -40,7 +40,7 @@ export default function EditAdPage() {
   }, [])
 
   async function fetchCurrentPrice() {
-    const { data } = await supabase.from("gx_current_price").select("price").single()
+    const { data } = await supabase.from("afx_current_price").select("price").single()
     if (data) {
       setCurrentPrice(data.price)
     }
@@ -57,10 +57,10 @@ export default function EditAdPage() {
       }
 
       setFormData({
-        gx_amount: data.gx_amount.toString(),
+        afx_amount: data.afx_amount.toString(),
         min_amount: data.min_amount.toString(),
         max_amount: data.max_amount.toString(),
-        price_per_gx: data.price_per_gx.toString(),
+        price_per_afx: data.price_per_afx.toString(),
         account_number: data.account_number || "",
         mpesa_number: data.mpesa_number || "",
         paybill_number: data.paybill_number || "",
@@ -79,26 +79,26 @@ export default function EditAdPage() {
     setSaving(true)
 
     try {
-      const gxAmount = Number.parseFloat(formData.gx_amount)
+      const afxAmount = Number.parseFloat(formData.afx_amount)
       const minAmount = Number.parseFloat(formData.min_amount)
       const maxAmount = Number.parseFloat(formData.max_amount)
-      const pricePerGx = Number.parseFloat(formData.price_per_gx)
+      const pricePerAfx = Number.parseFloat(formData.price_per_afx)
 
       // Validation
-      if (gxAmount < 50) {
-        alert("Minimum GX amount is 50 GX")
+      if (afxAmount < 50) {
+        alert("Minimum AFX amount is 50 AFX")
         setSaving(false)
         return
       }
 
       if (minAmount < 2) {
-        alert("Minimum tradable amount is 2 GX")
+        alert("Minimum tradable amount is 2 AFX")
         setSaving(false)
         return
       }
 
-      if (maxAmount > gxAmount) {
-        alert("Maximum amount cannot exceed total GX amount")
+      if (maxAmount > afxAmount) {
+        alert("Maximum amount cannot exceed total AFX amount")
         setSaving(false)
         return
       }
@@ -106,8 +106,8 @@ export default function EditAdPage() {
       // Price validation (±4% from current price)
       const minPrice = currentPrice * 0.96
       const maxPrice = currentPrice * 1.04
-      if (pricePerGx < minPrice || pricePerGx > maxPrice) {
-        alert(`Price must be within ±4% of current GX price (${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)} KES)`)
+      if (pricePerAfx < minPrice || pricePerAfx > maxPrice) {
+        alert(`Price must be within ±4% of current AFX price (${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)} KES)`)
         setSaving(false)
         return
       }
@@ -115,10 +115,10 @@ export default function EditAdPage() {
       const { error } = await supabase
         .from("p2p_ads")
         .update({
-          gx_amount: gxAmount,
+          afx_amount: afxAmount,
           min_amount: minAmount,
           max_amount: maxAmount,
-          price_per_gx: pricePerGx,
+          price_per_afx: pricePerAfx,
           account_number: formData.account_number,
           mpesa_number: formData.mpesa_number,
           paybill_number: formData.paybill_number,
@@ -172,13 +172,13 @@ export default function EditAdPage() {
 
           <form onSubmit={handleSubmit} className="glass-card p-8 rounded-xl border border-white/10 space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="gx_amount">GX Amount (Min: 50 GX)</Label>
+              <Label htmlFor="afx_amount">AFX Amount (Min: 50 AFX)</Label>
               <Input
-                id="gx_amount"
+                id="afx_amount"
                 type="number"
                 step="0.01"
-                value={formData.gx_amount}
-                onChange={(e) => setFormData({ ...formData, gx_amount: e.target.value })}
+                value={formData.afx_amount}
+                onChange={(e) => setFormData({ ...formData, afx_amount: e.target.value })}
                 required
                 className="bg-white/5 border-white/10"
               />
@@ -186,7 +186,7 @@ export default function EditAdPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="min_amount">Min Amount (Min: 2 GX)</Label>
+                <Label htmlFor="min_amount">Min Amount (Min: 2 AFX)</Label>
                 <Input
                   id="min_amount"
                   type="number"
@@ -213,16 +213,16 @@ export default function EditAdPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="price_per_gx">
-                Price per GX (KES) - Must be within ±4% of current price ({(currentPrice * 0.96).toFixed(2)} -{" "}
+              <Label htmlFor="price_per_afx">
+                Price per AFX (KES) - Must be within ±4% of current price ({(currentPrice * 0.96).toFixed(2)} -{" "}
                 {(currentPrice * 1.04).toFixed(2)})
               </Label>
               <Input
-                id="price_per_gx"
+                id="price_per_afx"
                 type="number"
                 step="0.01"
-                value={formData.price_per_gx}
-                onChange={(e) => setFormData({ ...formData, price_per_gx: e.target.value })}
+                value={formData.price_per_afx}
+                onChange={(e) => setFormData({ ...formData, price_per_afx: e.target.value })}
                 required
                 className="bg-white/5 border-white/10"
               />
